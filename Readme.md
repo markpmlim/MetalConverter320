@@ -15,3 +15,18 @@ To understand the source code, the programmer should have
 a) a sound knowledge of the Fundamentals of the Metal API,
 b) know the structure of an Apple IIGS graphic file with the format $C1/$0000, and,
 c) basic knowledge of the Apple IIGS video hardware.
+
+
+Acknowledgements:
+
+Author: Marius Horga
+For posting all those articles on "Using MetalKit" at http://metalkit.org
+
+Author: Warren Moore
+For posting all articles on www.metalbyexample.com
+
+Author: Andy McFadden
+For making his CiderPress source code available on the Internet.
+
+Apple Computer
+For making many Metal tutorials as well as articles available for downloading.
