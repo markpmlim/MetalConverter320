@@ -1,0 +1,22 @@
+Brief Description
+
+The Swift playground demo
+(a) sets  up a renderer object,
+(b) instantiates a MTKView object,
+(c) set the renderer instance in step (a) to be the view's delegate, and,
+(d) gets playground to display the view.
+
+
+Converter.swift source code
+
+The renderer object must adopt both methods of MTKViewDelegate since it's going to be the view's delegate. The renderer sets up the environment before the MTKViewDelegate method "drawInMTKView:" gets called. Notice that the compute shader is called in the method "createTexture" rather than in the method "drawInMTKView:" because the latter method is called at least 60 frames/second. This means the method "buildPipelineStates" must be called before "createTexture" because the latter method needs a MTLComputePipeState instance to do its job of preparing an instance of MTLTexture whose allocated storage is to be filled with the pixels of the generated graphic. (There are methods for getting these pixels from the texture's storage allocation if one intends to write them out as a graphic PNG file. See Apple's documentation on MTLTexture)
+
+The method "createBuffers" sets up all instances of MTLBuffer needed by the rest of the program. Briefly, it loads an Apple IIGS graphic and extracts its bitmap, color tables and SCB table and instantiate these as one-dimension (1D) arrays of MTLBuffers to be passed to the compute shader. The MTLBuffers for the geometry to be rendered in the view is also prepared by this method.
+
+For those who have a powerful graphics processor, you may want to change the line
+
+            let threadGroupCount = MTLSizeMake(8, 8, 1)
+
+to use a bigger threadgroup to execute more threads in parallel.
+
+Refer to the Apple's article entitled "Calculating Threadgroup and Grid Sizes" for more information.

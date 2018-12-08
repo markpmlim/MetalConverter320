@@ -1,0 +1,52 @@
+Description of the functions of the Metal shaders.
+
+
+Compute Processing with a Metal kernel function.
+
+The meat of the project is the kernel function named "convert320". See the source code of the file "Shaders.metal"ù
+
+The kernel function is declared as:
+
+kernel void convert320(const device uchar *iigsBitmap           [[buffer(0)]],
+                       const device uchar *scbs                 [[buffer(1)]],
+                       const device ushort *colorTables         [[buffer(2)]],
+                       texture2d<half, access::write> output    [[texture(0)]],
+                       uint2 gid                                [[thread_position_in_grid]])
+
+
+Three input buffers are passed to the kernel function. The first input buffer will consist of a 32 000-byte IIGS bitmap passed as a 1D array of bytes. Each byte in this bitmap consists of two 4-bit "pixels". These 2 "pixels" are not true colour pixels but are indices into a color table.
+
+The second input buffer contains 200 Scanline Control Bytes (SCBs) (plus 56 unused bytes) passed as a 1D array of 256 bytes. Note: the Apple IIGS standard monitor supports 200 scanlines (or screen lines in graphic mode). The value of each of these SCBs tells the Apple IIGS hardware which one of the 16 colour tables to use for a particular scanline (or entire row of 320 pixels). There is a 1:1 correspondence between the SCBs in the SCB array and the rows of pixels on the IIGS monitor. To elaborate, the colours of scanline 0 is controlled by SCB0 (the first SCB), scanline 199 by SCB199 (the last SCB). Each scanline can use just ONE of the 16 colour tables passed. BTW, each scanline on the Apple IIGS occupies 160 bytes of video memory. In 320 graphic mode, each screen line on the standard Apple IIGS monitor displays exactly 160 x 2 = 320 pixels.
+
+The third input buffer consists of 16 colour tables passed also as a 1D array of 512 bytes; each colour table itself consists of 16 colour entries. Each colour entry is a 16-bit word; the colour word has the following format (in bits): 0000rrrr ggggbbbb. (In hex, the bytes are written as: 0x0RGB; in the Apple IIGS video memory the bytes are stored as: GB 0R) In other words, the colour word is actually 12 bits. The maximum value is 00001111 11111111 (or 0F FF in hex or 4095 in decimal) and the minimum is 00000000 00000000 (00 00 in hex). The Apple IIGS can display up to 4 096 colours but the number of colours displayed by a scanline is much more limited; each pixel of a scanline can be one of 16 colours in the colour table specified by the scanline's SCB.
+
+The output of the kernel function is an instance of a MTLTexture which is created by the code in CPU before being passed as a parameter to the GPU. This 2D texture object must have the dimensions 320x200 exactly matching the IIGS graphic's resolution.
+
+Think of the metal texture as having a rectangular 2D grid of pixels. In this project, the rectangular grid is 320 columns and 200 rows. The first pixel on the grid is (0, 0) and is positioned at the the upper left hand corner of the grid. The last pixel of the grid is (319, 199) and is at the bottom right hand corner. The pixel at the upper right hand corner is (319, 0) and finally, that at the bottom left hand corner is (0, 199). These 4 pairs of coordinates are the bounds of the grid.
+
+In the kernel shader (or function), each pixel of the texture is assigned a pair of coordinates. The function works backwards to determine which IIGS "pixel" corresponds to a particular pixel in the metal texture.
+
+Let's consider an example where the kernel function is passed an integer pair (61, 40). It receives this pair of integers via the parameter "gid" from the Metal Framework. The pixel associated with this integer pair is said to have an x-coordinate of 61 and y-coordinate of 40.  Incidentally, this unique pair of integers is used to identify the thread currently processed by the kernel function. In other words, the integer pair can be considered to be the coordinates of the pixel currently processed.
+
+In the 2D rectangular grid mentioned above, the pixel is located at row 40 and column 61. Since the row is known, the kernel function fetches the 41st byte from the SCB array and must mask off its upper nibble. (Some Apple IIGS graphics file has SCBs with a bit ON in the upper nibble.) The resulting value is the colour table to be used for the entire row of 320 pixels. 
+
+Next, the kernel function computes the location of the byte corresponding to the pixel within the IIGS bitmap and stores it in the variable "bitmapIndex". (Remember, the bitmap was passed as a 1D array of bytes.) For the pixel in question, the value of "bitmapIndex" is 40x160 + 61/2 = 6 400 + 30 = 6 430.
+
+The byte containing the IIGS "pixel" is fetched from the bitmap and stored in the variable "pixels". The upper nibble of this byte is for the pixel whose position is (60, 40) on the grid and the lower nibble for the pixel at location (61, 40). The value of this IIGS "pixel" is the relative offset to the colour word (within the colour table) to use.
+
+In short, the SCB of the row of the IIGS "pixel" is used to determine which of the 16 colour tables to use. The value of a IIGS "pixel" indicates which colour word (or entry) to access within that colour table. As mentioned above, each colour table has 16 colour words, each of which is 16 bits (or 2 bytes) wide. The variable "colorTableIndex" is the array index of the colour word. Using this index, the colour of the IIGS "pixel" being processed is fetched from the 1D color tables array and stored variable "color"ù.
+
+The red, green and blue components of the colour word are unpacked and stored in the variables "red", "green" and "blue" respectively. The range of their values is [0, 15] and the components need to be scaled to [0, 255] i.e. 4 bits becoming 8 bits. Effectively, this means we are going from 4-bit RGB to 8-bit RGB. A colour word consisting of four 16-bit floating point numbers is formed using the half4 constructor. Using 32-bit floating point may be an overkill given that an Apple IIGS graphic can have at most 4 096 colours. Finally, the colour of the pixel is scaled down to [0, 1.0] because Metal, like OpenGL, works with colours in the range [0, 1.0].
+
+Instead of multiplying the red, green and blue components separately, these arithmetic operations should perform faster replacing them with a vector-scalar multiplication. Initialise the "color4" variable with the values of "red", "green", "blue" with 15 as the fourth component. Scale up and then scale down using 2 successive vector-scalar multiplications. This is left as an exercise to the reader.
+
+On the CPU side, Metal will instantiate 8x8 = 64 threads and the kernel function is called to process these threads in parallel. 64 pixels will be generated and written to the metal texture. No double for-loops are needed.
+
+
+
+Rendering with a pair of vertex-fragment shaders.
+
+The operations of the vertex and fragment shaders are straight forward. The vertex function converts the position of an incoming vertex from a 2D float (float2) to a 4D float (float4) and output it to clip space. There is no need to perform any matrix transformation because the coordinates of the corners to the rectangle to be rendered are already in normalised device coordinates (NDC). However, the user may want to change the original coordinates of the 4 corners to display a rectangle that takes up the entire display area. Just change 0.75 to 1.0 and -0.75 to -1.0.
+
+BTW, unlike OpenGL, the default winding order of the vertices of a triangle in Metal is clockwise and Metal's texture coordinate system has its origin at the upper left corner of the rendered rectangle. The declaration of the Vertex struct takes into account of these 2 requirements.
+
