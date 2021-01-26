@@ -212,13 +212,19 @@ public class MetalViewRenderer: NSObject, MTKViewDelegate {
                                             offset: 0,
                                             at: 2)
             
-            let threadGroupCount = MTLSizeMake(8, 8, 1)
-            let threadGroups = MTLSizeMake(texture.width / threadGroupCount.width,
-                                           texture.height / threadGroupCount.height,
-                                           1)
+            // Use the max # of threads available for parallel processing.
+            let w = cps.threadExecutionWidth
+            let h = cps.maxTotalThreadsPerThreadgroup / w
+            let threadsPerThreadgroup = MTLSizeMake(w, h, 1)
+            let threadgroupsPerGrid = MTLSizeMake((texture.width + w - 1) / w,
+                                                  (texture.height + h - 1) / h,
+                                                  1)
             // Execute the kernel function
-            commandComputeEncoder.dispatchThreadgroups(threadGroups,
-                                                       threadsPerThreadgroup: threadGroupCount)
+            // Note: boundary checks are necessary in the compute shader
+            // unless we use the alternative method
+            //      dispatchThreads:threadsPerThreadgroup:
+            commandComputeEncoder.dispatchThreadgroups(threadgroupsPerGrid,
+                                                       threadsPerThreadgroup: threadsPerThreadgroup)
             commandComputeEncoder.endEncoding()
             commandBuffer.commit()
         }
